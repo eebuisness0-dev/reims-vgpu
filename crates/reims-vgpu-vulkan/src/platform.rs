@@ -380,11 +380,17 @@ pub const EXACT_ALL: &str = "all";
 fn exact_policy(exact: Option<&str>) -> metal2vulkan::device::DevicePolicy {
     use metal2vulkan::device::{
         BatchOrderPolicy, CompletionPolicy, DevicePolicy, HalfChainPolicy, HeapCompressionPolicy,
-        HostPageTexturePolicy, PipelineWaitPolicy,
+        HostPageTexturePolicy, PipelineWaitPolicy, UnorderedFetchPolicy,
     };
     let mut policy = DevicePolicy::default();
     policy.completion = CompletionPolicy::Exact;
     policy.heap_compression = HeapCompressionPolicy::Uncompressed;
+    // A device with neither ordered form of framebuffer fetch (no rasterization-order color
+    // attachment access, no fragment shader pixel interlock: Xclipse and Mali drivers) reads a
+    // fetched color attachment as an unordered input attachment, noted as `UnorderedFetch`, where
+    // the default refuses the guest's pipeline. A device with either form is unaffected, so this
+    // is no switch.
+    policy.unordered_fetch = UnorderedFetchPolicy::InputAttachments;
     for name in (exact.unwrap_or_default().split(',').map(str::trim)).filter(|n| !n.is_empty()) {
         match name {
             EXACT_ALL => policy = policy.exact_answers(),
@@ -694,7 +700,7 @@ pub(crate) mod tests {
     fn reims_vgpu_exact_names_the_policys_exact_forms() {
         use metal2vulkan::device::{
             BatchOrderPolicy, CompletionPolicy, DevicePolicy, HalfChainPolicy,
-            HeapCompressionPolicy, HostPageTexturePolicy, PipelineWaitPolicy,
+            HeapCompressionPolicy, HostPageTexturePolicy, PipelineWaitPolicy, UnorderedFetchPolicy,
         };
         let runtimes = DevicePolicy::default();
         assert_eq!(runtimes.completion, CompletionPolicy::Grouped);
@@ -702,6 +708,8 @@ pub(crate) mod tests {
         let mut fast = runtimes;
         fast.completion = CompletionPolicy::Exact;
         fast.heap_compression = HeapCompressionPolicy::Uncompressed;
+        assert_eq!(runtimes.unordered_fetch, UnorderedFetchPolicy::Refuse);
+        fast.unordered_fetch = UnorderedFetchPolicy::InputAttachments;
         assert_eq!(fast.batch_order, BatchOrderPolicy::Ends);
         assert_eq!(fast.host_page_textures, HostPageTexturePolicy::InPlace);
         assert_eq!(fast.half_chains, HalfChainPolicy::AtExits);
