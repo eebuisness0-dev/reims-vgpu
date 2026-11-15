@@ -419,11 +419,16 @@ fn exact_policy(exact: Option<&str>) -> metal2vulkan::device::DevicePolicy {
         BatchOrderPolicy, CompletionPolicy, DecodedTexelsPolicy, DevicePolicy, FloatMathsPolicy,
         HalfBlendPolicy, HalfRoundingPolicy, HeapCompressionPolicy, NanMinMaxPolicy, ResolvePolicy,
         RoundingOrderPolicy, SamplingPolicy, TexelConversionPolicy, TileStorePolicy,
-        YCbCrFilterPolicy,
+        UnorderedFetchPolicy, YCbCrFilterPolicy,
     };
     let mut policy = DevicePolicy::default();
     policy.completion = CompletionPolicy::Exact;
     policy.heap_compression = HeapCompressionPolicy::Uncompressed;
+    // A device with neither ordered form of framebuffer fetch (Samsung Xclipse, Mali) would
+    // refuse every pipeline that reads a color attachment, which iOS 26 and watchOS draw with:
+    // read it through unordered input attachments instead (recorded `UnorderedFetch`). A device
+    // with either ordered form is unaffected.
+    policy.unordered_fetch = UnorderedFetchPolicy::InputAttachments;
     for name in (exact.unwrap_or_default().split(',').map(str::trim)).filter(|n| !n.is_empty()) {
         match name {
             EXACT_ALL => policy = policy.exact_answers(),
@@ -729,14 +734,16 @@ pub(crate) mod tests {
             BatchOrderPolicy, CompletionPolicy, DecodedTexelsPolicy, DevicePolicy,
             FloatMathsPolicy, HalfBlendPolicy, HalfRoundingPolicy, HeapCompressionPolicy,
             NanMinMaxPolicy, ResolvePolicy, RoundingOrderPolicy, SamplingPolicy,
-            TexelConversionPolicy, TileStorePolicy, YCbCrFilterPolicy,
+            TexelConversionPolicy, TileStorePolicy, UnorderedFetchPolicy, YCbCrFilterPolicy,
         };
         let runtimes = DevicePolicy::default();
+        assert_eq!(runtimes.unordered_fetch, UnorderedFetchPolicy::Refuse);
         assert_eq!(runtimes.completion, CompletionPolicy::Grouped);
         assert_eq!(runtimes.heap_compression, HeapCompressionPolicy::Compressed);
         let mut fast = runtimes;
         fast.completion = CompletionPolicy::Exact;
         fast.heap_compression = HeapCompressionPolicy::Uncompressed;
+        fast.unordered_fetch = UnorderedFetchPolicy::InputAttachments;
         assert_eq!(fast.sampling, SamplingPolicy::NativeDevice);
         assert_eq!(fast.ycbcr_filter, YCbCrFilterPolicy::Device);
         assert_eq!(fast.float_maths, FloatMathsPolicy::Native);
